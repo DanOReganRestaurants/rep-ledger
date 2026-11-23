@@ -41,6 +41,8 @@
   --good:#4fc28a; --good-soft:#15301f; --warn:#f0b14a; --warn-soft:#352812; --bad:#ff7b72; --bad-soft:#3a1c1a;
   color-scheme:dark}
 *{box-sizing:border-box}
+/* Solid band behind the phone status bar, so content never scrolls underneath the clock */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:25}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
 .wrap{max-width:680px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px calc(150px + env(safe-area-inset-bottom,0px))}
 h1,h2,h3{font-family:var(--display);font-weight:700;letter-spacing:.01em;text-wrap:balance;margin:0;line-height:1.1}
