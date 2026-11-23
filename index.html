@@ -153,6 +153,12 @@ fieldset{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
 .ghalf{position:absolute;left:50%;top:0;bottom:0;border-left:2px solid var(--surface)}
 /* 16px stops iOS zooming the page when a field is focused */
 .sets input,.textin,select,.plan-grid input{font-size:16px}
+.sheet{position:fixed;inset:0;z-index:35;background:rgba(10,12,16,.55);display:flex;align-items:flex-start;justify-content:center;padding:calc(env(safe-area-inset-top,0px) + 56px) max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px))}
+.sheet-in{width:100%;max-width:460px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+.sheet textarea{font:inherit;font-size:16px;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);resize:vertical}
+.sheet textarea:focus{border-color:var(--accent);outline:none}
+.note{font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.card.done{gap:6px}
 .confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:20}
 .last{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;font-size:.88rem}
 .timer{position:fixed;left:0;right:0;bottom:calc(52px + env(safe-area-inset-bottom,0px));z-index:6;background:var(--ink);color:var(--bg);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
@@ -267,6 +273,14 @@ select{font:inherit;padding:9px 10px;border-radius:8px;border:1px solid var(--li
   <button data-tab="history">History</button>
 </div></nav>
 <div class="toast" id="toast" hidden></div>
+<div class="sheet" id="sheet" hidden role="dialog" aria-modal="true" aria-labelledby="shTitle"><div class="sheet-in">
+  <span class="eyebrow">Exercise complete</span>
+  <h2 id="shTitle">Exercise</h2>
+  <p class="num muted" id="shSets"></p>
+  <label class="eyebrow" for="shNote">Notes (optional)</label>
+  <textarea id="shNote" rows="3" maxlength="500" placeholder="e.g. seat on 4, last reps slow, try 2.5 kg more next time"></textarea>
+  <div class="row"><button class="btn primary" id="shSave" style="flex:1">Save and mark done</button><button class="btn" id="shLater">Not finished</button></div>
+</div></div>
 
 <script>
 /* ---------- Exercise library: [primary, secondaries, compound/isolation, upper/lower, barbell] ---------- */
@@ -542,7 +556,7 @@ const repLabel=t=>t.lo===t.hi?`${t.hi}`:`${t.lo}–${t.hi}`;
 
 function exHist(name){
   const out=[];
-  for(const s of S.sessions){const e=(s.entries||[]).find(x=>x.ex===name);if(e&&e.sets&&e.sets.length)out.push({date:s.date,sets:e.sets})}
+  for(const s of S.sessions){const e=(s.entries||[]).find(x=>x.ex===name);if(e&&e.sets&&e.sets.length)out.push({date:s.date,sets:e.sets,note:e.note||""})}
   return out;
 }
 
@@ -774,6 +788,13 @@ function todayHTML(){
   h+=`<div class="row" style="justify-content:space-between"><h2>${esc(day.name)}</h2><span class="muted" style="font-size:.85rem">${p.goal==="size"?effortLine(p,wi):(wi.wave?`Wave week ${wi.wave}${wi.wave===4?" (lighter)":""}`:"Add weight while reps hold")}</span></div>`;
   daySlots(day).forEach((slot,ei)=>{
     const t=adjT(target(slot,p,wi)),L=LIB[slot.ex],sg=adjS(suggest(slot,t,p,wi),L),ent=draft.entries[ei]||{sets:[]};
+    if(ent.done){
+      h+=`<section class="card done" aria-labelledby="ex-${ei}"><div class="ex-head"><div class="stack" style="gap:2px;min-width:0"><span class="eyebrow">${MLABEL[L[0]]}${slot.pair?` · Superset ${slot.pair}`:""}</span><h3 id="ex-${ei}">${esc(slot.ex)}</h3></div><span class="pill good">Done</span></div>
+        <div class="num" style="font-size:.9rem">${ent.sets.filter(x=>x.reps!=="").map(x=>`${esc(x.kg||"0")}×${esc(x.reps)}${x.rir!==""?` @${esc(x.rir)}`:""}`).join(" · ")}</div>
+        ${ent.note?`<div class="note muted">${esc(ent.note)}</div>`:""}
+        <div class="row" style="gap:14px"><button class="linkbtn" data-reopen="${ei}">Edit sets</button><button class="linkbtn" data-note="${ei}">${ent.note?"Edit note":"Add note"}</button></div></section>`;
+      return;
+    }
     h+=`<section class="card" aria-labelledby="ex-${ei}">
       <div class="ex-head"><div class="stack" style="gap:2px;min-width:0"><span class="eyebrow">${MLABEL[L[0]]}${slot.pair?` · Superset ${slot.pair}`:""}${(p.priorities||[]).includes(L[0])?` · <span style="color:var(--accent)">Weak point</span>`:""}</span><h3 id="ex-${ei}">${esc(slot.ex)}${recFor(L[0],p.goal)===slot.ex?` <span class="pill accent" style="font-family:var(--body);font-size:.7rem;vertical-align:middle">★ Recommended</span>`:""}</h3><div class="target">${t.sets} × ${repLabel(t)} · ${rirLabel(t.rir)} · rest ${t.rest}${slot.adj?` · ${slot.adj>0?"+":""}${slot.adj} set${Math.abs(slot.adj)>1?"s":""} from check-ins`:""}</div>${(p.jointFlags||{})[L[0]]?jointHTML(slot,L,p):""}</div>${slot.main?`<span class="pill accent">Main lift</span>`:slot.extra?`<button class="btn small" data-rm-ex="${ei}">Remove</button>`:""}</div>
       <div class="prompt ${sg.cls}"><div class="prompt-body"><b>${esc(sg.label)}</b><div class="muted">${esc(sg.note)}${sg.stall?` <span style="color:var(--warn)">${esc(sg.stall)}</span>`:""}</div></div>${sg.kg!=null?`<span class="kg">${fmt(sg.kg)} kg</span>`:""}</div>
@@ -787,6 +808,8 @@ function todayHTML(){
         <input id="in-${ei}-${si}-rir" data-e="${ei}" data-s="${si}" data-f="rir" inputmode="numeric" value="${esc(s.rir)}" placeholder="${t.rir[0]}" aria-label="Set ${si+1} reps in reserve">`).join("")}
       </div>
       <div class="row" style="justify-content:space-between"><div class="row" style="gap:14px"><button class="linkbtn" data-add="${ei}">+ Add set</button>${ent.sets.length>1?`<button class="linkbtn" style="color:var(--muted)" data-rmset="${ei}">− Remove set</button>`:""}</div><button class="btn small" data-rest="${ei}">Start rest · ${mmss(restSecs(slot,p))}</button></div>
+      ${ent.note?`<div class="note muted"><span class="eyebrow">Note</span> ${esc(ent.note)}</div>`:""}
+      <button class="linkbtn" data-note="${ei}">${ent.note?"Edit note":"Add note"} · mark done</button>
       ${detailsHTML(slot,t,p)}
     </section>`;
   });
@@ -820,10 +843,14 @@ function bindToday(){
       const sl=slots[+i.dataset.e];if(!sl)return;
       if(i.dataset.f==="reps"&&i.value)startRest(restSecs(sl,S.profile),sl.ex);
       if(+i.dataset.s===0)calibrate(+i.dataset.e,sl);
+      const ei=+i.dataset.e,en=draft.entries[ei];
+      if(i.dataset.f==="reps"&&en&&!en.done&&!en.asked&&exFilled(en))setTimeout(()=>openNote(ei),350);
     };
   });
   document.querySelectorAll("[data-tswap]").forEach(el=>el.onchange=()=>swapToday(el.dataset.tswap,el.value));
   document.querySelectorAll("[data-treset]").forEach(b=>b.onclick=()=>swapToday(b.dataset.treset,b.dataset.orig));
+  document.querySelectorAll("[data-note]").forEach(b=>b.onclick=()=>openNote(+b.dataset.note));
+  document.querySelectorAll("[data-reopen]").forEach(b=>b.onclick=()=>{const en=draft.entries[+b.dataset.reopen];if(en){en.done=false;en.asked=true;saveDraft();render(true)}});
   document.querySelectorAll("[data-rest]").forEach(b=>b.onclick=()=>{const sl=slots[+b.dataset.rest];if(sl)startRest(restSecs(sl,S.profile),sl.ex)});
   document.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>{const e=draft.entries[b.dataset.add];const last=e.sets[e.sets.length-1];e.sets.push({kg:last?last.kg:"",reps:"",rir:""});saveDraft();render(true)});
   document.querySelectorAll("[data-rmset]").forEach(b=>b.onclick=()=>{
@@ -851,8 +878,9 @@ async function startDeload(){
 }
 async function saveSession(){
   if(S.saving)return;
+  if(!$("#sheet").hidden)closeNote(false);
   const p=S.profile,prog=programme(p),wi=weekInfo(p);
-  const entries=draft.entries.map(e=>({ex:e.ex,sets:e.sets.filter(s=>s.kg!==""&&s.reps!==""&&!isNaN(numv(s.kg))&&numv(s.kg)>=0&&parseInt(s.reps)>0).map(s=>({kg:numv(s.kg),reps:parseInt(s.reps),rir:s.rir===""?null:Math.min(10,Math.max(0,parseInt(s.rir)||0))}))})).filter(e=>e.sets.length);
+  const entries=draft.entries.map(e=>({ex:e.ex,note:(e.note||"").trim().slice(0,500),sets:e.sets.filter(s=>s.kg!==""&&s.reps!==""&&!isNaN(numv(s.kg))&&numv(s.kg)>=0&&parseInt(s.reps)>0).map(s=>({kg:numv(s.kg),reps:parseInt(s.reps),rir:s.rir===""?null:Math.min(10,Math.max(0,parseInt(s.rir)||0))}))})).filter(e=>e.sets.length);
   if(!entries.length){toast("Fill in weight and reps for at least one set");return}
   const odd=entries.find(e=>e.sets.some(x=>x.kg>600||x.reps>100));
   if(odd){toast(`Check ${odd.ex}: one of the numbers looks too high`);return}
@@ -928,6 +956,23 @@ function readinessHTML(){
 function busyHTML(p){
   if(busyActive(p))return `<div class="banner info"><span><strong>Busy week</strong> until ${niceDate(p.busyUntil+"T00:00:00")}: two short superset sessions, any two days with at least one rest day between. Your normal programme resumes after.</span><button class="btn small" id="busyOff">End busy week</button></div>`;
   return `<div class="row" style="justify-content:flex-end"><button class="linkbtn" id="busyOn">Short on time this week? Switch to two 40-minute sessions</button></div>`;
+}
+/* ---------- Exercise-complete pop-up: note + mark done (the session itself is stored when you tap Save session) ---------- */
+function exFilled(en){return en.sets.length>0&&en.sets.every(x=>parseInt(x.reps)>0)}
+function openNote(ei){
+  if(!draft||S.tab!=="today"||S.summary||S.feedback||S.saving)return;
+  const en=draft.entries[ei];if(!en)return;
+  S.noteFor=ei;
+  $("#shTitle").textContent=en.ex;
+  $("#shSets").textContent=en.sets.filter(x=>x.reps!=="").map(x=>`${x.kg||0}×${x.reps}`).join(" · ")||"No sets entered yet";
+  $("#shNote").value=en.note||"";
+  $("#sheet").hidden=false;
+}
+function closeNote(done){
+  const en=draft&&S.noteFor!=null?draft.entries[S.noteFor]:null;
+  if(en){en.note=$("#shNote").value.trim().slice(0,500);en.asked=true;if(done)en.done=true;saveDraft();if(done)toast(`${en.ex} saved`)}
+  $("#sheet").hidden=true;S.noteFor=null;
+  if(S.tab==="today"&&!S.summary&&!S.feedback)render(true);
 }
 function draftHasReps(){return !!(draft&&draft.entries.some(e=>e.sets.some(x=>x.reps!=="")))}
 
@@ -1186,7 +1231,7 @@ function calibrate(ei,slot){
 /* ---------- At the rack: last session and warm-up ramp ---------- */
 function lastLine(ex){
   const h=exHist(ex),l=h[h.length-1];if(!l)return "";
-  return `<div class="last"><span class="eyebrow">Last time · ${niceDate(l.date)}</span><span class="num">${l.sets.map(s=>`${fmt(s.kg)}×${s.reps}${s.rir!=null?` @${s.rir}`:""}`).join(" · ")}</span></div>`;
+  return `<div class="last"><span class="eyebrow">Last time · ${niceDate(l.date)}</span><span class="num">${l.sets.map(s=>`${fmt(s.kg)}×${s.reps}${s.rir!=null?` @${s.rir}`:""}`).join(" · ")}</span></div>${l.note?`<div class="note muted"><span class="eyebrow">Your note last time</span> ${esc(l.note)}</div>`:""}`;
 }
 function warmupHTML(slot,sg,L,p){
   if(L[2]!=="c"||sg.kg==null||sg.kg<30||sg.cls==="deload")return "";
@@ -1537,7 +1582,7 @@ function historyHTML(){
   return `<div class="stack"><div class="row" style="justify-content:space-between"><h2>History</h2>${S.dl?`<button class="btn small" id="exportCsv">Export CSV</button>`:""}</div><div>${list.map(s=>`<div class="hist-item">
     <div class="row" style="justify-content:space-between"><div><strong>${esc(s.dayName||"Session")}</strong> <span class="muted">${niceDate(s.date)}</span>${s.deload?` <span class="pill warn">Lighter</span>`:""}</div>
     ${S.confirmDel===s.id?`<div class="row"><span class="muted" style="font-size:.85rem">Delete this session?</span><button class="btn small danger" data-confirm="${esc(s.id)}">Delete</button><button class="btn small" data-cancel>Keep</button></div>`:`<button class="btn small" data-del-s="${esc(s.id)}">Delete</button>`}</div>
-    <ul>${(s.entries||[]).map(e=>`<li>${esc(e.ex)}: <span class="num">${e.sets.map(x=>`${fmt(x.kg)}×${x.reps}`).join(", ")}</span></li>`).join("")}</ul></div>`).join("")}</div></div>`;
+    <ul>${(s.entries||[]).map(e=>`<li>${esc(e.ex)}: <span class="num">${e.sets.map(x=>`${fmt(x.kg)}×${x.reps}`).join(", ")}</span>${e.note?`<div class="note">${esc(e.note)}</div>`:""}</li>`).join("")}</ul></div>`).join("")}</div></div>`;
 }
 /* ---------- Backup and restore: everything for every person on this login, as one file ---------- */
 async function buildBackup(){
@@ -1594,8 +1639,8 @@ function bindData(){
 }
 function csvCell(v){v=v==null?"":String(v);return /[",\n]/.test(v)?`"${v.replace(/"/g,'""')}"`:v}
 function buildCsv(){
-  const rows=[["date","session","block_week","exercise","muscle","set","kg","reps","rir","readiness"]];
-  for(const s of S.sessions)for(const e of (s.entries||[]))e.sets.forEach((x,i)=>rows.push([isoDay(s.date),s.dayName||"",s.week||"",e.ex,(LIB[e.ex]&&MLABEL[LIB[e.ex][0]])||"",i+1,x.kg,x.reps,x.rir==null?"":x.rir,s.readiness?s.readiness.level:""]));
+  const rows=[["date","session","block_week","exercise","muscle","set","kg","reps","rir","readiness","note"]];
+  for(const s of S.sessions)for(const e of (s.entries||[]))e.sets.forEach((x,i)=>rows.push([isoDay(s.date),s.dayName||"",s.week||"",e.ex,(LIB[e.ex]&&MLABEL[LIB[e.ex][0]])||"",i+1,x.kg,x.reps,x.rir==null?"":x.rir,s.readiness?s.readiness.level:"",i===0?(e.note||""):""]));
   return rows.map(r=>r.map(csvCell).join(",")).join("\n");
 }
 function bindHistory(){
@@ -1612,6 +1657,9 @@ function bindHistory(){
 $("#tMinus").onclick=()=>{if(TM.end){TM.end=Math.max(Date.now(),TM.end-15000);TM.done=false;if(!TM.int)TM.int=setInterval(tick,250);tick()}};
 $("#tPlus").onclick=()=>{if(TM.end){TM.end=Math.max(TM.end,Date.now())+15000;TM.dur+=15;TM.done=false;if(!TM.int)TM.int=setInterval(tick,250);tick()}};
 $("#tSkip").onclick=stopRest;
+$("#shSave").onclick=()=>closeNote(true);
+$("#shLater").onclick=()=>closeNote(false);
+$("#sheet").onclick=e=>{if(e.target.id==="sheet")closeNote(false)};
 $("#main").addEventListener("focusout",()=>{if(S.dirty)setTimeout(()=>{if(S.dirty&&!fieldFocused()){S.dirty=false;render(true)}},80)});
 document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;S.confirmDel=null;window.scrollTo(0,0);render(true)});
 
@@ -1737,7 +1785,7 @@ function handleWriteError(e){
 <script>
 /* Update check: when a newer version is on the server, offer a reload (typed sets are kept) */
 (function(){
-  var BUILD="2648cc0cf2",last=0;
+  var BUILD="46f4eebe9f",last=0;
   function check(){
     if(location.protocol==="file:"||Date.now()-last<60000)return;last=Date.now();
     fetch("index.html?v="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(t){
