@@ -468,7 +468,7 @@ const BUSY={
 function busyActive(p){return !!(p&&p.busyUntil&&isoDay(new Date())<=p.busyUntil)}
 function thisSunday(){const d=new Date();d.setDate(d.getDate()+(7-d.getDay())%7);return isoDay(d)}
 function programme(p){
-  if(busyActive(p))return BUSY[p.goal].map((d,di)=>({name:d.name,ex:d.ex.map(([ex,sets,lo,hi,main,pair],si)=>({ex,orig:ex,key:`busy-${di}-${si}`,sets,lo,hi,main:!!main,pair:pair||null,busy:true}))}));
+  if(busyActive(p))return BUSY[p.goal].map((d,di)=>({name:d.name,ex:d.ex.map(([ex,sets,lo,hi,main,pair],si)=>{const key=`busy-${di}-${si}`,chosen=applySwap(p.swaps||{},key,ex);return {ex:chosen,orig:ex,key,sets,lo,hi,main:!!main&&LIB[chosen][2]!=="i",pair:pair||null,busy:true}})}));
   const sw=p.swaps||{},pri=(p.priorities||[]).filter(m=>MUSCLES.includes(m)).slice(0,2);
   const days=(T[p.goal][p.days]||[]).map((d,di)=>({name:d.name,ex:d.ex.map(([ex,sets,lo,hi,main],si)=>{
     const key=`${di}-${si}`,chosen=applySwap(sw,key,ex),isIso=LIB[chosen][2]==="i";
@@ -810,6 +810,8 @@ function bindToday(){
       if(+i.dataset.s===0)calibrate(+i.dataset.e,sl);
     };
   });
+  document.querySelectorAll("[data-tswap]").forEach(el=>el.onchange=()=>swapToday(el.dataset.tswap,el.value));
+  document.querySelectorAll("[data-treset]").forEach(b=>b.onclick=()=>swapToday(b.dataset.treset,b.dataset.orig));
   document.querySelectorAll("[data-rest]").forEach(b=>b.onclick=()=>{const sl=slots[+b.dataset.rest];if(sl)startRest(restSecs(sl,S.profile),sl.ex)});
   document.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>{const e=draft.entries[b.dataset.add];const last=e.sets[e.sets.length-1];e.sets.push({kg:last?last.kg:"",reps:"",rir:""});saveDraft();render(true)});
   document.querySelectorAll("[data-rmset]").forEach(b=>b.onclick=()=>{
@@ -930,7 +932,21 @@ function detailsHTML(slot,t,p){
   const cue=CUES[slot.ex];
   return `<details class="why"><summary>Technique</summary>
     <p style="margin-top:6px">${cue?esc(cue):"Use a full range of motion and control the lowering phase."}</p>
-    <p style="margin-top:4px"><a href="${videoUrl(slot.ex)}" target="_blank" rel="noopener">Watch technique videos ↗</a></p></details>`;
+    <p style="margin-top:4px"><a href="${videoUrl(slot.ex)}" target="_blank" rel="noopener">Watch technique videos ↗</a></p></details>
+    ${slot.key?`<details class="why"><summary>Swap exercise</summary>
+      <div class="stack" style="gap:6px;margin-top:8px"><select data-tswap="${esc(slot.key)}" aria-label="Swap ${esc(slot.ex)} for another ${MLABEL[LIB[slot.orig][0]].toLowerCase()} exercise">${exOptions(slot.ex,null,LIB[slot.orig][0])}</select>
+      <span class="muted" style="font-size:.82rem">Same muscle, same sets and reps. The change sticks for future sessions${slot.ex!==slot.orig?`. <button class="linkbtn" style="display:inline;padding:0" data-treset="${esc(slot.key)}" data-orig="${esc(slot.orig)}">Reset to ${esc(slot.orig)}</button>`:"."}</span></div></details>`:""}`;
+}
+/* Swap from the Today screen: only that exercise's rows are reset, the rest of the session stays as entered */
+async function swapToday(key,val){
+  const p=S.profile,day=programme(p)[S.dayIdx],ei=day.ex.findIndex(x=>x.key===key);if(ei<0)return;
+  if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+  const np=Object.assign({},p,{swaps:Object.assign({},p.swaps||{},{[key]:val})});
+  S.profile=np;
+  const slot=programme(np)[S.dayIdx].ex[ei];
+  if(draft&&draft.entries[ei]){draft.entries[ei]=freshEntry(slot,np,weekInfo(np));saveDraft()}
+  render(true);toast(`Swapped in ${slot.ex}`);
+  try{await profileRef().update({swaps:{[key]:val}})}catch(e){handleWriteError(e)}
 }
 
 /* ---------- Block sequencing: plan a size block followed by a strength wave (or the reverse) ---------- */
