@@ -739,7 +739,17 @@ function ensureDraft(){
   const saved=ls(key);
   const d=prog[S.dayIdx];
   const fresh=saved&&saved.ts&&Date.now()-saved.ts<18*3600e3;
-  if(fresh&&saved.entries&&d.ex.every((s,i)=>saved.entries[i]&&saved.entries[i].ex===s.ex)){draft={key,entries:saved.entries,startedAt:saved.startedAt||null,sid:saved.sid||newSid(),ts:saved.ts};return}
+  if(fresh&&Array.isArray(saved.entries)){
+    /* Rebuild around what was typed: entries follow the plan's exercises by name, so a swap or a changed set count never discards logged sets */
+    const pool=saved.entries.filter(e=>e&&LIB[e.ex]&&Array.isArray(e.sets));
+    const take=ex=>{const i=pool.findIndex(e=>e.ex===ex&&!e.extra);return i<0?null:pool.splice(i,1)[0]};
+    const planned=d.ex.map(slot=>take(slot.ex)||freshEntry(slot,p,wi));
+    const done=pool.filter(e=>!e.extra&&e.sets.some(x=>x.reps!=="")).map(e=>Object.assign({},e,{extra:true}));
+    const extras=pool.filter(e=>e.extra);
+    draft={key,entries:planned.concat(done,extras),startedAt:saved.startedAt||null,sid:saved.sid||newSid(),ts:saved.ts};
+    ls(key,{entries:draft.entries,startedAt:draft.startedAt,sid:draft.sid,ts:draft.ts});
+    return;
+  }
   if(saved)ls(key,null);
   draft={key,sid:newSid(),entries:d.ex.map(slot=>freshEntry(slot,p,wi))};
 }
@@ -946,7 +956,8 @@ async function swapToday(key,val){
   const np=Object.assign({},p,{swaps:Object.assign({},p.swaps||{},{[key]:val})});
   S.profile=np;
   const slot=programme(np)[S.dayIdx].ex[ei];
-  if(draft&&draft.entries[ei]){draft.entries[ei]=freshEntry(slot,np,weekInfo(np));saveDraft()}
+  if(draft&&draftHasReps())saveDraft();
+  draft=null;
   render(true);toast(`Swapped in ${slot.ex}`);
   try{await profileRef().update({swaps:{[key]:val}})}catch(e){handleWriteError(e)}
 }
@@ -1721,6 +1732,32 @@ function handleWriteError(e){
     const pick=S.lifters.find(l=>l.id===remembered)||S.lifters[0];
     if(pick)switchLifter(pick.id,pick.data);else{S.lid=null;S.profile=null;renderData()}
   },()=>{clearTimeout(timer);if(S.status!=="ready")S.status="error";renderData()});
+})();
+</script>
+<script>
+/* Update check: when a newer version is on the server, offer a reload (typed sets are kept) */
+(function(){
+  var BUILD="2648cc0cf2",last=0;
+  function check(){
+    if(location.protocol==="file:"||Date.now()-last<60000)return;last=Date.now();
+    fetch("index.html?v="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(t){
+      var m=/var BUILD="([0-9a-f]+)"/.exec(t);
+      if(m&&m[1]!==BUILD)show();
+    }).catch(function(){});
+  }
+  function show(){
+    if(document.getElementById("rlUpdate"))return;
+    var d=document.createElement("div");d.id="rlUpdate";
+    d.style.cssText="position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);z-index:40;background:var(--accent);color:var(--accent-ink);padding:10px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;font-weight:600";
+    d.innerHTML='<span>A new version is ready. Your typed sets are kept.</span><button style="font:inherit;font-weight:700;border:0;border-radius:8px;padding:8px 14px;background:var(--surface);color:var(--ink)">Update</button>';
+    d.querySelector("button").onclick=function(){
+      var go=function(){location.reload()};
+      if(navigator.serviceWorker&&navigator.serviceWorker.getRegistration)navigator.serviceWorker.getRegistration().then(function(r){return r&&r.update()}).catch(function(){}).then(go);else go();
+    };
+    document.body.appendChild(d);
+  }
+  addEventListener("load",function(){setTimeout(check,3000)});
+  document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")check()});
 })();
 </script>
 <script>if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost"))addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));</script>
