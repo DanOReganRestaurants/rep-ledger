@@ -496,12 +496,16 @@ function programme(p){
     const reg=LIB[PRI_EX[m][0]][3];
     let cands=days.map((d,di)=>({d,di,load:d.ex.filter(s=>LIB[s.ex][0]===m).length,fit:d.ex.some(s=>LIB[s.ex][3]===reg)}));
     if(cands.some(c=>c.fit))cands=cands.filter(c=>c.fit);
-    cands.sort((a,b)=>a.load-b.load||a.di-b.di).slice(0,Math.min(2,days.length)).forEach(({d,di})=>{
+    cands.sort((a,b)=>(a.load?0:1)-(b.load?0:1)||a.load-b.load||a.di-b.di).slice(0,Math.min(2,days.length)).forEach(({d,di})=>{
       const def=PRI_EX[m].find(n=>!d.ex.some(s=>s.ex===n))||PRI_EX[m][0];
       const key=`${di}-pri-${m}`,ex=applySwap(sw,key,def),iso=LIB[ex][2]==="i";
       d.ex.push({ex,orig:def,key,sets:days.length<=3?4:3,lo:iso?10:8,hi:iso?15:12,main:false,pri:true});
     });
   }
+  /* Session order: main lifts, then compounds (weak points first), then isolation work (weak points first); big muscles before small */
+  const MORD=["quads","hamstrings","glutes","chest","back","delts","triceps","biceps","calves"];
+  const tier=x=>{const L=LIB[x.ex],c=L[2]==="c",w=pri.includes(L[0]);return x.main?0:c&&w?1:c?2:w?3:4};
+  days.forEach(d=>{d.ex.forEach((x,i)=>x.pos=i);d.ex.sort((a,b)=>tier(a)-tier(b)||MORD.indexOf(LIB[a.ex][0])-MORD.indexOf(LIB[b.ex][0])||a.pos-b.pos)});
   /* Check-in adjustments: one slot per muscle per day gains or loses sets */
   const adj=p.volAdj||{};
   for(const m of Object.keys(adj)){const n=adj[m]|0;if(!n)continue;
@@ -1785,7 +1789,7 @@ function handleWriteError(e){
 <script>
 /* Update check: when a newer version is on the server, offer a reload (typed sets are kept) */
 (function(){
-  var BUILD="46f4eebe9f",last=0;
+  var BUILD="d37e8bea77",last=0;
   function check(){
     if(location.protocol==="file:"||Date.now()-last<60000)return;last=Date.now();
     fetch("index.html?v="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(t){
