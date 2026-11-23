@@ -262,6 +262,12 @@ select{font:inherit;padding:9px 10px;border-radius:8px;border:1px solid var(--li
   <div class="chips" id="lifters" role="group" aria-label="Who is training" hidden style="margin-bottom:18px"></div>
   <main id="main"><div class="empty">Loading your programme…</div></main>
 </div>
+<div class="sheet" id="finish" hidden role="dialog" aria-modal="true" aria-labelledby="fnTitle"><div class="sheet-in">
+  <span class="eyebrow">All exercises done</span>
+  <h2 id="fnTitle">Finish workout?</h2>
+  <p class="muted" id="fnSum"></p>
+  <div class="row"><button class="btn primary" id="fnGo" style="flex:1">Finish workout</button><button class="btn" id="fnLater">Not yet</button></div>
+</div></div>
 <div class="timer" id="timer" hidden role="status" aria-live="polite"><div class="tin">
   <div class="stack" style="gap:0;min-width:0"><span class="eyebrow" id="tLabel">Rest</span><span class="tnum num" id="tNum">0:00</span></div>
   <div class="row" style="flex-wrap:nowrap;gap:6px"><button class="btn small" id="tMinus">−15s</button><button class="btn small" id="tPlus">+15s</button><button class="btn small" id="tSkip">Skip</button></div>
@@ -883,6 +889,7 @@ async function startDeload(){
 async function saveSession(){
   if(S.saving)return;
   if(!$("#sheet").hidden)closeNote(false);
+  $("#finish").hidden=true;
   const p=S.profile,prog=programme(p),wi=weekInfo(p);
   const entries=draft.entries.map(e=>({ex:e.ex,note:(e.note||"").trim().slice(0,500),sets:e.sets.filter(s=>s.kg!==""&&s.reps!==""&&!isNaN(numv(s.kg))&&numv(s.kg)>=0&&parseInt(s.reps)>0).map(s=>({kg:numv(s.kg),reps:parseInt(s.reps),rir:s.rir===""?null:Math.min(10,Math.max(0,parseInt(s.rir)||0))}))})).filter(e=>e.sets.length);
   if(!entries.length){toast("Fill in weight and reps for at least one set");return}
@@ -977,6 +984,15 @@ function closeNote(done){
   if(en){en.note=$("#shNote").value.trim().slice(0,500);en.asked=true;if(done)en.done=true;saveDraft();if(done)toast(`${en.ex} saved`)}
   $("#sheet").hidden=true;S.noteFor=null;
   if(S.tab==="today"&&!S.summary&&!S.feedback)render(true);
+  if(done&&draft&&!draft.finAsked&&draft.entries.every(e=>e.done))openFinish();
+}
+/* When every exercise is marked done, offer to finish (this is the same as tapping Save session) */
+function openFinish(){
+  if(!draft||S.tab!=="today"||S.summary||S.feedback||S.saving)return;
+  draft.finAsked=true;
+  const sets=draft.entries.reduce((a,e)=>a+e.sets.filter(x=>parseInt(x.reps)>0).length,0);
+  $("#fnSum").textContent=`${draft.entries.length} exercise${draft.entries.length===1?"":"s"} · ${sets} set${sets===1?"":"s"}. Finishing saves the session to your history.`;
+  $("#finish").hidden=false;
 }
 function draftHasReps(){return !!(draft&&draft.entries.some(e=>e.sets.some(x=>x.reps!=="")))}
 
@@ -1663,6 +1679,9 @@ $("#tPlus").onclick=()=>{if(TM.end){TM.end=Math.max(TM.end,Date.now())+15000;TM.
 $("#tSkip").onclick=stopRest;
 $("#shSave").onclick=()=>closeNote(true);
 $("#shLater").onclick=()=>closeNote(false);
+$("#fnGo").onclick=()=>{$("#finish").hidden=true;saveSession()};
+$("#fnLater").onclick=()=>{$("#finish").hidden=true};
+$("#finish").onclick=e=>{if(e.target.id==="finish")$("#finish").hidden=true};
 $("#sheet").onclick=e=>{if(e.target.id==="sheet")closeNote(false)};
 $("#main").addEventListener("focusout",()=>{if(S.dirty)setTimeout(()=>{if(S.dirty&&!fieldFocused()){S.dirty=false;render(true)}},80)});
 document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{S.tab=b.dataset.tab;S.confirmDel=null;window.scrollTo(0,0);render(true)});
@@ -1789,7 +1808,7 @@ function handleWriteError(e){
 <script>
 /* Update check: when a newer version is on the server, offer a reload (typed sets are kept) */
 (function(){
-  var BUILD="d37e8bea77",last=0;
+  var BUILD="47bad1b0d0",last=0;
   function check(){
     if(location.protocol==="file:"||Date.now()-last<60000)return;last=Date.now();
     fetch("index.html?v="+Date.now(),{cache:"no-store"}).then(function(r){return r.ok?r.text():""}).then(function(t){
